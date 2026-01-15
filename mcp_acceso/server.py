@@ -265,7 +265,7 @@ async def buscar_empleado(termino: str) -> dict:
 @mcp.tool(tags={"registros"})
 async def consultar_registros_fecha(
     fecha: str,
-    empleado_id: Optional[str] = None,
+    codigo_empleado: Optional[str] = None,
     restaurante: Optional[str] = None,
     tipo: Optional[str] = None
 ) -> dict:
@@ -274,17 +274,18 @@ async def consultar_registros_fecha(
 
     Args:
         fecha: Fecha en formato YYYY-MM-DD
-        empleado_id: UUID del empleado (opcional)
+        codigo_empleado: Documento de identidad del empleado (opcional)
         restaurante: Filtrar por restaurante (opcional)
         tipo: Tipo de registro: ENTRADA o SALIDA (opcional)
 
     Returns:
         Lista de registros con datos del empleado
     """
+    log_tool_call("consultar_registros_fecha", fecha=fecha, codigo_empleado=codigo_empleado, restaurante=restaurante, tipo=tipo)
+
     query = """
         SELECT
             r.id,
-            r.empleado_id,
             e.codigo_empleado,
             e.nombre || ' ' || e.apellido AS empleado_nombre,
             e.cargo,
@@ -299,15 +300,15 @@ async def consultar_registros_fecha(
         FROM registros r
         JOIN empleados e ON r.empleado_id = e.id
         WHERE r.fecha_registro = :fecha
-          AND (CAST(:empleado_id AS uuid) IS NULL OR r.empleado_id = CAST(:empleado_id AS uuid))
-          AND (CAST(:restaurante AS text) IS NULL OR r.punto_trabajo ILIKE ('%' || CAST(:restaurante AS text) || '%'))
-          AND (CAST(:tipo AS text) IS NULL OR r.tipo_registro = :tipo)
+          AND (:codigo_empleado IS NULL OR e.codigo_empleado = :codigo_empleado)
+          AND (:restaurante IS NULL OR r.punto_trabajo ILIKE ('%' || :restaurante || '%'))
+          AND (:tipo IS NULL OR r.tipo_registro = :tipo)
         ORDER BY r.hora_registro
     """
 
     params = {
         'fecha': datetime.strptime(fecha, '%Y-%m-%d').date(),
-        'empleado_id': empleado_id,
+        'codigo_empleado': codigo_empleado,
         'restaurante': restaurante,
         'tipo': tipo
     }
@@ -317,8 +318,6 @@ async def consultar_registros_fecha(
     registros = []
     for row in results:
         registros.append({
-            'id': str(row['id']),
-            'empleado_id': str(row['empleado_id']),
             'codigo_empleado': row['codigo_empleado'],
             'empleado_nombre': row['empleado_nombre'],
             'cargo': row['cargo'],
@@ -334,7 +333,7 @@ async def consultar_registros_fecha(
     return {
         'fecha': fecha,
         'filtros': {
-            'empleado_id': empleado_id,
+            'codigo_empleado': codigo_empleado,
             'restaurante': restaurante,
             'tipo': tipo
         },
@@ -347,7 +346,7 @@ async def consultar_registros_fecha(
 async def consultar_registros_rango(
     fecha_inicio: str,
     fecha_fin: str,
-    empleado_id: Optional[str] = None,
+    codigo_empleado: Optional[str] = None,
     restaurante: Optional[str] = None
 ) -> dict:
     """
@@ -356,16 +355,17 @@ async def consultar_registros_rango(
     Args:
         fecha_inicio: Fecha inicio YYYY-MM-DD
         fecha_fin: Fecha fin YYYY-MM-DD
-        empleado_id: UUID del empleado (opcional)
+        codigo_empleado: Documento de identidad del empleado (opcional)
         restaurante: Filtrar por restaurante (opcional)
 
     Returns:
         Lista de registros ordenados por fecha y hora
     """
+    log_tool_call("consultar_registros_rango", fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, codigo_empleado=codigo_empleado, restaurante=restaurante)
+
     query = """
         SELECT
             r.id,
-            r.empleado_id,
             e.codigo_empleado,
             e.nombre || ' ' || e.apellido AS empleado_nombre,
             r.tipo_registro,
@@ -376,15 +376,15 @@ async def consultar_registros_rango(
         FROM registros r
         JOIN empleados e ON r.empleado_id = e.id
         WHERE r.fecha_registro BETWEEN :fecha_inicio AND :fecha_fin
-          AND (CAST(:empleado_id AS uuid) IS NULL OR r.empleado_id = CAST(:empleado_id AS uuid))
-          AND (CAST(:restaurante AS text) IS NULL OR r.punto_trabajo ILIKE ('%' || CAST(:restaurante AS text) || '%'))
+          AND (:codigo_empleado IS NULL OR e.codigo_empleado = :codigo_empleado)
+          AND (:restaurante IS NULL OR r.punto_trabajo ILIKE ('%' || :restaurante || '%'))
         ORDER BY r.fecha_registro, r.hora_registro
     """
 
     params = {
         'fecha_inicio': datetime.strptime(fecha_inicio, '%Y-%m-%d').date(),
         'fecha_fin': datetime.strptime(fecha_fin, '%Y-%m-%d').date(),
-        'empleado_id': empleado_id,
+        'codigo_empleado': codigo_empleado,
         'restaurante': restaurante
     }
 
@@ -393,8 +393,6 @@ async def consultar_registros_rango(
     registros = []
     for row in results:
         registros.append({
-            'id': str(row['id']),
-            'empleado_id': str(row['empleado_id']),
             'codigo_empleado': row['codigo_empleado'],
             'empleado_nombre': row['empleado_nombre'],
             'tipo_registro': row['tipo_registro'],
@@ -410,7 +408,7 @@ async def consultar_registros_rango(
             'fin': fecha_fin
         },
         'filtros': {
-            'empleado_id': empleado_id,
+            'codigo_empleado': codigo_empleado,
             'restaurante': restaurante
         },
         'total_registros': len(registros),
@@ -419,36 +417,39 @@ async def consultar_registros_rango(
 
 
 @mcp.tool(tags={"registros"})
-async def obtener_ultimo_registro(empleado_id: str) -> dict:
+async def obtener_ultimo_registro(codigo_empleado: str) -> dict:
     """
     Obtiene el último registro de un empleado para saber si debe marcar entrada o salida.
 
     Args:
-        empleado_id: UUID del empleado
+        codigo_empleado: Documento de identidad del empleado (ej: "10018084")
 
     Returns:
         Último registro y siguiente acción esperada (ENTRADA o SALIDA)
     """
+    log_tool_call("obtener_ultimo_registro", codigo_empleado=codigo_empleado)
+
     query = """
         SELECT
             r.tipo_registro,
             r.fecha_registro,
             r.hora_registro,
             r.punto_trabajo,
+            e.codigo_empleado,
             e.nombre || ' ' || e.apellido AS empleado_nombre
         FROM registros r
         JOIN empleados e ON r.empleado_id = e.id
-        WHERE r.empleado_id = CAST(:empleado_id AS uuid)
+        WHERE e.codigo_empleado = :codigo_empleado
         ORDER BY r.fecha_registro DESC, r.hora_registro DESC
         LIMIT 1
     """
 
-    result = await db.execute_one(query, {'empleado_id': empleado_id})
+    result = await db.execute_one(query, {'codigo_empleado': codigo_empleado})
 
     if result:
         siguiente_accion = 'SALIDA' if result['tipo_registro'] == 'ENTRADA' else 'ENTRADA'
         return {
-            'empleado_id': empleado_id,
+            'codigo_empleado': result['codigo_empleado'],
             'empleado_nombre': result['empleado_nombre'],
             'ultimo_registro': {
                 'tipo': result['tipo_registro'],
@@ -459,13 +460,21 @@ async def obtener_ultimo_registro(empleado_id: str) -> dict:
             'siguiente_accion': siguiente_accion
         }
     else:
-        return {
-            'empleado_id': empleado_id,
-            'empleado_nombre': None,
-            'ultimo_registro': None,
-            'siguiente_accion': 'ENTRADA',
-            'mensaje': 'No hay registros para este empleado'
-        }
+        # Verificar si el empleado existe
+        check_query = "SELECT nombre || ' ' || apellido AS nombre FROM empleados WHERE codigo_empleado = :codigo"
+        empleado = await db.execute_one(check_query, {'codigo': codigo_empleado})
+        if empleado:
+            return {
+                'codigo_empleado': codigo_empleado,
+                'empleado_nombre': empleado['nombre'],
+                'ultimo_registro': None,
+                'siguiente_accion': 'ENTRADA',
+                'mensaje': 'No hay registros para este empleado'
+            }
+        else:
+            return {
+                'error': f'No existe empleado con código: {codigo_empleado}'
+            }
 
 
 @mcp.tool(tags={"registros"})
@@ -538,26 +547,28 @@ async def empleados_sin_salida(fecha: Optional[str] = None) -> dict:
 # =============================================================================
 
 @mcp.tool(tags={"reportes"})
-async def calcular_horas_trabajadas_dia(empleado_id: str, fecha: str) -> dict:
+async def calcular_horas_trabajadas_dia(codigo_empleado: str, fecha: str) -> dict:
     """
     Calcula horas trabajadas de un empleado en un día específico con desglose de extras y recargos.
 
     Args:
-        empleado_id: UUID del empleado
+        codigo_empleado: Documento de identidad del empleado (ej: "10018084")
         fecha: Fecha YYYY-MM-DD
 
     Returns:
         Desglose completo de horas trabajadas
     """
+    log_tool_call("calcular_horas_trabajadas_dia", codigo_empleado=codigo_empleado, fecha=fecha)
+
     # Obtener datos del empleado
     empleado_query = """
-        SELECT nombre || ' ' || apellido AS nombre, liquida_dominical
-        FROM empleados WHERE id = CAST(:empleado_id AS uuid)
+        SELECT id, codigo_empleado, nombre || ' ' || apellido AS nombre, liquida_dominical
+        FROM empleados WHERE codigo_empleado = :codigo_empleado
     """
-    empleado = await db.execute_one(empleado_query, {'empleado_id': empleado_id})
+    empleado = await db.execute_one(empleado_query, {'codigo_empleado': codigo_empleado})
 
     if not empleado:
-        return {'error': f'Empleado {empleado_id} no encontrado'}
+        return {'error': f'No existe empleado con código: {codigo_empleado}'}
 
     # Obtener registros del día
     registros_query = """
@@ -565,20 +576,21 @@ async def calcular_horas_trabajadas_dia(empleado_id: str, fecha: str) -> dict:
             tipo_registro,
             hora_registro,
             observaciones
-        FROM registros
-        WHERE empleado_id = CAST(:empleado_id AS uuid)
-          AND fecha_registro = :fecha
-        ORDER BY hora_registro
+        FROM registros r
+        JOIN empleados e ON r.empleado_id = e.id
+        WHERE e.codigo_empleado = :codigo_empleado
+          AND r.fecha_registro = :fecha
+        ORDER BY r.hora_registro
     """
 
     registros = await db.execute(registros_query, {
-        'empleado_id': empleado_id,
+        'codigo_empleado': codigo_empleado,
         'fecha': datetime.strptime(fecha, '%Y-%m-%d').date()
     })
 
     if not registros:
         return {
-            'empleado_id': empleado_id,
+            'codigo_empleado': codigo_empleado,
             'empleado_nombre': empleado['nombre'],
             'fecha': fecha,
             'mensaje': 'No hay registros para esta fecha',
@@ -590,7 +602,7 @@ async def calcular_horas_trabajadas_dia(empleado_id: str, fecha: str) -> dict:
     resultado = calcular_horas_dia(registros, fecha_obj)
 
     # Agregar info del empleado
-    resultado['empleado_id'] = empleado_id
+    resultado['codigo_empleado'] = codigo_empleado
     resultado['empleado_nombre'] = empleado['nombre']
     resultado['liquida_dominical'] = empleado['liquida_dominical']
 
@@ -605,7 +617,7 @@ async def calcular_horas_trabajadas_dia(empleado_id: str, fecha: str) -> dict:
 
 @mcp.tool(tags={"reportes"})
 async def reporte_horas_semanal(
-    empleado_id: Optional[str] = None,
+    codigo_empleado: Optional[str] = None,
     fecha_semana: Optional[str] = None,
     restaurante: Optional[str] = None
 ) -> dict:
@@ -613,13 +625,15 @@ async def reporte_horas_semanal(
     Genera reporte semanal de horas trabajadas por empleado con alertas de exceso (>48h).
 
     Args:
-        empleado_id: UUID del empleado (opcional, todos si no se especifica)
+        codigo_empleado: Documento de identidad del empleado (opcional, todos si no se especifica)
         fecha_semana: Cualquier fecha de la semana YYYY-MM-DD (default: semana actual)
         restaurante: Filtrar por restaurante (opcional)
 
     Returns:
         Reporte semanal con totales y alertas
     """
+    log_tool_call("reporte_horas_semanal", codigo_empleado=codigo_empleado, fecha_semana=fecha_semana, restaurante=restaurante)
+
     # Determinar rango de la semana
     if fecha_semana:
         fecha_ref = datetime.strptime(fecha_semana, '%Y-%m-%d').date()
@@ -631,7 +645,6 @@ async def reporte_horas_semanal(
     # Obtener registros de la semana
     query = """
         SELECT
-            r.empleado_id,
             e.codigo_empleado,
             e.nombre || ' ' || e.apellido AS empleado_nombre,
             e.liquida_dominical,
@@ -644,8 +657,8 @@ async def reporte_horas_semanal(
         FROM registros r
         JOIN empleados e ON r.empleado_id = e.id
         WHERE r.fecha_registro BETWEEN :inicio AND :fin
-          AND (CAST(:empleado_id AS uuid) IS NULL OR r.empleado_id = CAST(:empleado_id AS uuid))
-          AND (CAST(:restaurante AS text) IS NULL OR r.punto_trabajo ILIKE ('%' || CAST(:restaurante AS text) || '%'))
+          AND (:codigo_empleado IS NULL OR e.codigo_empleado = :codigo_empleado)
+          AND (:restaurante IS NULL OR r.punto_trabajo ILIKE ('%' || :restaurante || '%'))
           AND e.activo = TRUE
         ORDER BY e.apellido, e.nombre, r.fecha_registro, r.hora_registro
     """
@@ -653,35 +666,34 @@ async def reporte_horas_semanal(
     results = await db.execute(query, {
         'inicio': inicio_semana,
         'fin': fin_semana,
-        'empleado_id': empleado_id,
+        'codigo_empleado': codigo_empleado,
         'restaurante': restaurante
     })
 
     # Agrupar por empleado
     empleados_data = {}
     for row in results:
-        emp_id = str(row['empleado_id'])
-        if emp_id not in empleados_data:
-            empleados_data[emp_id] = {
-                'empleado_id': emp_id,
-                'codigo': row['codigo_empleado'],
+        codigo = row['codigo_empleado']
+        if codigo not in empleados_data:
+            empleados_data[codigo] = {
+                'codigo_empleado': codigo,
                 'nombre': row['empleado_nombre'],
                 'liquida_dominical': row['liquida_dominical'] if row['liquida_dominical'] is not None else False,
                 'registros_por_fecha': {}
             }
 
         fecha = str(row['fecha_registro'])
-        if fecha not in empleados_data[emp_id]['registros_por_fecha']:
-            empleados_data[emp_id]['registros_por_fecha'][fecha] = []
+        if fecha not in empleados_data[codigo]['registros_por_fecha']:
+            empleados_data[codigo]['registros_por_fecha'][fecha] = []
 
-        empleados_data[emp_id]['registros_por_fecha'][fecha].append({
+        empleados_data[codigo]['registros_por_fecha'][fecha].append({
             'tipo_registro': row['tipo_registro'],
             'hora_registro': row['hora_registro']
         })
 
     # Calcular horas por empleado
     reportes = []
-    for emp_id, data in empleados_data.items():
+    for codigo, data in empleados_data.items():
         dias = []
         totales = {
             'horas_trabajadas': 0,
@@ -710,8 +722,7 @@ async def reporte_horas_semanal(
         horas_exceso = max(0, totales['horas_trabajadas'] - LIMITE_SEMANAL)
 
         reportes.append({
-            'empleado_id': emp_id,
-            'codigo': data['codigo'],
+            'codigo_empleado': codigo,
             'nombre': data['nombre'],
             'semana_inicio': str(inicio_semana),
             'semana_fin': str(fin_semana),
@@ -727,7 +738,7 @@ async def reporte_horas_semanal(
             'fin': str(fin_semana)
         },
         'filtros': {
-            'empleado_id': empleado_id,
+            'codigo_empleado': codigo_empleado,
             'restaurante': restaurante
         },
         'total_empleados': len(reportes),
@@ -739,7 +750,7 @@ async def reporte_horas_semanal(
 async def reporte_horas_mensual(
     anio: int,
     mes: int,
-    empleado_id: Optional[str] = None,
+    codigo_empleado: Optional[str] = None,
     restaurante: Optional[str] = None
 ) -> dict:
     """
@@ -748,12 +759,14 @@ async def reporte_horas_mensual(
     Args:
         anio: Año (ej: 2024)
         mes: Mes (1-12)
-        empleado_id: UUID del empleado (opcional)
+        codigo_empleado: Documento de identidad del empleado (opcional)
         restaurante: Filtrar por restaurante (opcional)
 
     Returns:
         Reporte mensual consolidado
     """
+    log_tool_call("reporte_horas_mensual", anio=anio, mes=mes, codigo_empleado=codigo_empleado, restaurante=restaurante)
+
     inicio_mes, fin_mes = get_month_range(anio, mes)
 
     meses = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -762,7 +775,6 @@ async def reporte_horas_mensual(
 
     query = """
         SELECT
-            r.empleado_id,
             e.codigo_empleado,
             e.nombre,
             e.apellido,
@@ -779,8 +791,8 @@ async def reporte_horas_mensual(
         JOIN empleados e ON r.empleado_id = e.id
         WHERE EXTRACT(YEAR FROM r.fecha_registro) = :anio
           AND EXTRACT(MONTH FROM r.fecha_registro) = :mes
-          AND (CAST(:empleado_id AS uuid) IS NULL OR r.empleado_id = CAST(:empleado_id AS uuid))
-          AND (CAST(:restaurante AS text) IS NULL OR r.punto_trabajo ILIKE ('%' || CAST(:restaurante AS text) || '%'))
+          AND (:codigo_empleado IS NULL OR e.codigo_empleado = :codigo_empleado)
+          AND (:restaurante IS NULL OR r.punto_trabajo ILIKE ('%' || :restaurante || '%'))
           AND e.activo = TRUE
         ORDER BY e.apellido, e.nombre, r.fecha_registro, r.hora_registro
     """
@@ -788,18 +800,17 @@ async def reporte_horas_mensual(
     results = await db.execute(query, {
         'anio': anio,
         'mes': mes,
-        'empleado_id': empleado_id,
+        'codigo_empleado': codigo_empleado,
         'restaurante': restaurante
     })
 
     # Agrupar por empleado
     empleados_data = {}
     for row in results:
-        emp_id = str(row['empleado_id'])
-        if emp_id not in empleados_data:
-            empleados_data[emp_id] = {
-                'empleado_id': emp_id,
-                'codigo': row['codigo_empleado'],
+        codigo = row['codigo_empleado']
+        if codigo not in empleados_data:
+            empleados_data[codigo] = {
+                'codigo_empleado': codigo,
                 'nombre': f"{row['nombre']} {row['apellido']}",
                 'cargo': row['cargo'],
                 'departamento': row['departamento'],
@@ -808,17 +819,17 @@ async def reporte_horas_mensual(
             }
 
         fecha = str(row['fecha_registro'])
-        if fecha not in empleados_data[emp_id]['registros_por_fecha']:
-            empleados_data[emp_id]['registros_por_fecha'][fecha] = []
+        if fecha not in empleados_data[codigo]['registros_por_fecha']:
+            empleados_data[codigo]['registros_por_fecha'][fecha] = []
 
-        empleados_data[emp_id]['registros_por_fecha'][fecha].append({
+        empleados_data[codigo]['registros_por_fecha'][fecha].append({
             'tipo_registro': row['tipo_registro'],
             'hora_registro': row['hora_registro']
         })
 
     # Calcular por empleado
     reportes = []
-    for emp_id, data in empleados_data.items():
+    for codigo, data in empleados_data.items():
         resumen = {
             'dias_trabajados': len(data['registros_por_fecha']),
             'total_horas': 0,
@@ -846,8 +857,7 @@ async def reporte_horas_mensual(
                 resumen[key] = round(resumen[key], 2)
 
         reportes.append({
-            'empleado_id': emp_id,
-            'codigo': data['codigo'],
+            'codigo_empleado': codigo,
             'nombre': data['nombre'],
             'cargo': data['cargo'],
             'departamento': data['departamento'],
@@ -862,7 +872,7 @@ async def reporte_horas_mensual(
             'fin': str(fin_mes)
         },
         'filtros': {
-            'empleado_id': empleado_id,
+            'codigo_empleado': codigo_empleado,
             'restaurante': restaurante
         },
         'total_empleados': len(reportes),
@@ -1019,6 +1029,8 @@ async def resumen_nomina_quincenal(
     Returns:
         Resumen de nómina por empleado con valores calculados
     """
+    log_tool_call("resumen_nomina_quincenal", anio=anio, mes=mes, quincena=quincena, restaurante=restaurante)
+
     inicio, fin = get_quincena_range(anio, mes, quincena)
 
     meses = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -1036,7 +1048,6 @@ async def resumen_nomina_quincenal(
     # Obtener registros de la quincena
     query = """
         SELECT
-            r.empleado_id,
             e.codigo_empleado,
             e.nombre || ' ' || e.apellido AS nombre,
             e.cargo,
@@ -1049,7 +1060,7 @@ async def resumen_nomina_quincenal(
         FROM registros r
         JOIN empleados e ON r.empleado_id = e.id
         WHERE r.fecha_registro BETWEEN :inicio AND :fin
-          AND (CAST(:restaurante AS text) IS NULL OR r.punto_trabajo ILIKE ('%' || CAST(:restaurante AS text) || '%'))
+          AND (:restaurante IS NULL OR r.punto_trabajo ILIKE ('%' || :restaurante || '%'))
           AND e.activo = TRUE
         ORDER BY e.apellido, e.nombre, r.fecha_registro, r.hora_registro
     """
@@ -1063,11 +1074,10 @@ async def resumen_nomina_quincenal(
     # Agrupar por empleado
     empleados_data = {}
     for row in results:
-        emp_id = str(row['empleado_id'])
-        if emp_id not in empleados_data:
-            empleados_data[emp_id] = {
-                'empleado_id': emp_id,
-                'codigo': row['codigo_empleado'],
+        codigo = row['codigo_empleado']
+        if codigo not in empleados_data:
+            empleados_data[codigo] = {
+                'codigo_empleado': codigo,
                 'nombre': row['nombre'],
                 'cargo': row['cargo'],
                 'departamento': row['departamento'],
@@ -1076,17 +1086,17 @@ async def resumen_nomina_quincenal(
             }
 
         fecha = str(row['fecha_registro'])
-        if fecha not in empleados_data[emp_id]['registros_por_fecha']:
-            empleados_data[emp_id]['registros_por_fecha'][fecha] = []
+        if fecha not in empleados_data[codigo]['registros_por_fecha']:
+            empleados_data[codigo]['registros_por_fecha'][fecha] = []
 
-        empleados_data[emp_id]['registros_por_fecha'][fecha].append({
+        empleados_data[codigo]['registros_por_fecha'][fecha].append({
             'tipo_registro': row['tipo_registro'],
             'hora_registro': row['hora_registro']
         })
 
     # Calcular por empleado
     reportes = []
-    for emp_id, data in empleados_data.items():
+    for codigo, data in empleados_data.items():
         horas = {
             'ordinarias': 0,
             'extra_diurna': 0,
@@ -1133,8 +1143,7 @@ async def resumen_nomina_quincenal(
         valores = calcular_valor_horas(horas_para_calculo, config)
 
         reportes.append({
-            'empleado_id': emp_id,
-            'codigo': data['codigo'],
+            'codigo_empleado': codigo,
             'nombre': data['nombre'],
             'cargo': data['cargo'],
             'departamento': data['departamento'],
