@@ -6,6 +6,7 @@ generar reportes de horas y resúmenes de nómina.
 """
 
 import json
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
@@ -13,6 +14,14 @@ from typing import Optional
 from fastmcp import FastMCP
 
 from database import db
+
+# Configurar logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger("mcp-acceso")
+
 from utils import (
     LIMITE_SEMANAL,
     calcular_horas_dia,
@@ -50,6 +59,47 @@ mcp = FastMCP(
     """,
     lifespan=lifespan
 )
+
+
+# =============================================================================
+# MIDDLEWARE DE LOGGING
+# =============================================================================
+
+@mcp.middleware()
+async def logging_middleware(ctx):
+    """Middleware para loguear todas las peticiones entrantes"""
+    request = ctx.message
+
+    # Log detallado de la petición
+    logger.info("=" * 60)
+    logger.info(f"PETICIÓN ENTRANTE")
+    logger.info(f"Tipo de mensaje: {type(request).__name__}")
+    logger.info(f"Contenido completo: {request}")
+
+    # Si es una llamada a herramienta, logueamos los detalles
+    if hasattr(request, 'params'):
+        logger.info(f"Params: {request.params}")
+    if hasattr(request, 'method'):
+        logger.info(f"Method: {request.method}")
+
+    # Log del mensaje como dict si es posible
+    try:
+        if hasattr(request, 'model_dump'):
+            logger.info(f"Request dump: {json.dumps(request.model_dump(), indent=2, default=str)}")
+        elif hasattr(request, '__dict__'):
+            logger.info(f"Request dict: {json.dumps(request.__dict__, indent=2, default=str)}")
+    except Exception as e:
+        logger.warning(f"No se pudo serializar request: {e}")
+
+    logger.info("=" * 60)
+
+    # Continuar con la cadena de middleware
+    result = await ctx.next()
+
+    # Log de la respuesta
+    logger.info(f"RESPUESTA: {type(result).__name__}")
+
+    return result
 
 
 # =============================================================================
