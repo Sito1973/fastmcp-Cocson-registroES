@@ -1,0 +1,34 @@
+{
+  "$schema": "https://easypanel.io/schema.json",
+  "name": "mcp-reportes-acceso",
+  "description": "Servidor MCP para consultas de control de acceso y reportes de nómina",
+  "services": {
+    "app": {
+      "type": "app",
+      "build": {
+        "context": ".",
+        "dockerfile": "Dockerfile"
+      },
+      "env": {
+        "DATABASE_URL_FALLBACK": "${DATABASE_URL_FALLBACK}",
+        "TIMEZONE": "America/Bogota",
+        "PORT": "80"
+      },
+      "ports": [
+        {
+          "published": 80,
+          "target": 80
+        }
+      ],
+      "deploy": {
+        "replicas": 1,
+        "resources": {
+          "limits": {
+            "cpus": "0.5",
+            "memory": "512M"
+          }
+        }
+      }
+    }
+  }
+}
