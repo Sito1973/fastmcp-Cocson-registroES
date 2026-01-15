@@ -12,8 +12,46 @@ from datetime import datetime
 from typing import Optional
 
 from fastmcp import FastMCP
+from fastmcp.server.middleware import Middleware, MiddlewareContext
 
 from database import db
+
+
+# =============================================================================
+# MIDDLEWARE PARA COMPATIBILIDAD CON N8N
+# =============================================================================
+# n8n MCP Client tiene un bug conocido donde envía parámetros extra
+# (toolCallId, sessionId, success, etc.) que causan errores de validación.
+# GitHub Issues: #21500, #21716, #22787
+# Este middleware filtra esos parámetros antes de la validación.
+
+# Parámetros que n8n envía incorrectamente
+N8N_EXTRA_PARAMS = {'toolCallId', 'sessionId', 'success', 'action', 'chatInput'}
+
+
+class N8NCompatibilityMiddleware(Middleware):
+    """Middleware que filtra parámetros extra enviados por n8n MCP Client"""
+
+    async def on_call_tool(self, context: MiddlewareContext, call_next):
+        """Intercepta llamadas a herramientas y filtra parámetros de n8n"""
+        message = context.message
+
+        # Verificar si hay argumentos para filtrar
+        if hasattr(message, 'arguments') and message.arguments:
+            original_args = dict(message.arguments)
+            filtered_args = {
+                k: v for k, v in original_args.items()
+                if k not in N8N_EXTRA_PARAMS
+            }
+
+            # Si se filtraron parámetros, loguearlo
+            removed = set(original_args.keys()) - set(filtered_args.keys())
+            if removed:
+                print(f">>> [N8N-FIX] Removidos parámetros extra: {removed}", flush=True)
+                # Actualizar los argumentos
+                message.arguments = filtered_args
+
+        return await call_next(context)
 
 # Configurar logging - solo INFO para reducir ruido
 logging.basicConfig(
@@ -52,7 +90,7 @@ async def lifespan(app: FastMCP):
     await db.disconnect()
 
 
-# Crear servidor MCP
+# Crear servidor MCP con middleware de compatibilidad n8n
 mcp = FastMCP(
     "mcp-reportes-acceso",
     instructions="""
@@ -68,7 +106,8 @@ mcp = FastMCP(
 
     Los restaurantes disponibles son: Bandidos, Sumo, Leños y Parrilla
     """,
-    lifespan=lifespan
+    lifespan=lifespan,
+    middleware=[N8NCompatibilityMiddleware()]
 )
 
 
