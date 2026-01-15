@@ -300,9 +300,9 @@ async def consultar_registros_fecha(
         FROM registros r
         JOIN empleados e ON r.empleado_id = e.id
         WHERE r.fecha_registro = :fecha
-          AND (:codigo_empleado IS NULL OR e.codigo_empleado = :codigo_empleado)
-          AND (:restaurante IS NULL OR r.punto_trabajo ILIKE ('%' || :restaurante || '%'))
-          AND (:tipo IS NULL OR r.tipo_registro = :tipo)
+          AND (CAST(:codigo_empleado AS text) IS NULL OR e.codigo_empleado = :codigo_empleado)
+          AND (CAST(:restaurante AS text) IS NULL OR r.punto_trabajo ILIKE ('%' || :restaurante || '%'))
+          AND (CAST(:tipo AS text) IS NULL OR r.tipo_registro = :tipo)
         ORDER BY r.hora_registro
     """
 
@@ -376,8 +376,8 @@ async def consultar_registros_rango(
         FROM registros r
         JOIN empleados e ON r.empleado_id = e.id
         WHERE r.fecha_registro BETWEEN :fecha_inicio AND :fecha_fin
-          AND (:codigo_empleado IS NULL OR e.codigo_empleado = :codigo_empleado)
-          AND (:restaurante IS NULL OR r.punto_trabajo ILIKE ('%' || :restaurante || '%'))
+          AND (CAST(:codigo_empleado AS text) IS NULL OR e.codigo_empleado = :codigo_empleado)
+          AND (CAST(:restaurante AS text) IS NULL OR r.punto_trabajo ILIKE ('%' || :restaurante || '%'))
         ORDER BY r.fecha_registro, r.hora_registro
     """
 
@@ -657,8 +657,8 @@ async def reporte_horas_semanal(
         FROM registros r
         JOIN empleados e ON r.empleado_id = e.id
         WHERE r.fecha_registro BETWEEN :inicio AND :fin
-          AND (:codigo_empleado IS NULL OR e.codigo_empleado = :codigo_empleado)
-          AND (:restaurante IS NULL OR r.punto_trabajo ILIKE ('%' || :restaurante || '%'))
+          AND (CAST(:codigo_empleado AS text) IS NULL OR e.codigo_empleado = :codigo_empleado)
+          AND (CAST(:restaurante AS text) IS NULL OR r.punto_trabajo ILIKE ('%' || :restaurante || '%'))
           AND e.activo = TRUE
         ORDER BY e.apellido, e.nombre, r.fecha_registro, r.hora_registro
     """
@@ -791,8 +791,8 @@ async def reporte_horas_mensual(
         JOIN empleados e ON r.empleado_id = e.id
         WHERE EXTRACT(YEAR FROM r.fecha_registro) = :anio
           AND EXTRACT(MONTH FROM r.fecha_registro) = :mes
-          AND (:codigo_empleado IS NULL OR e.codigo_empleado = :codigo_empleado)
-          AND (:restaurante IS NULL OR r.punto_trabajo ILIKE ('%' || :restaurante || '%'))
+          AND (CAST(:codigo_empleado AS text) IS NULL OR e.codigo_empleado = :codigo_empleado)
+          AND (CAST(:restaurante AS text) IS NULL OR r.punto_trabajo ILIKE ('%' || :restaurante || '%'))
           AND e.activo = TRUE
         ORDER BY e.apellido, e.nombre, r.fecha_registro, r.hora_registro
     """
@@ -1060,7 +1060,7 @@ async def resumen_nomina_quincenal(
         FROM registros r
         JOIN empleados e ON r.empleado_id = e.id
         WHERE r.fecha_registro BETWEEN :inicio AND :fin
-          AND (:restaurante IS NULL OR r.punto_trabajo ILIKE ('%' || :restaurante || '%'))
+          AND (CAST(:restaurante AS text) IS NULL OR r.punto_trabajo ILIKE ('%' || :restaurante || '%'))
           AND e.activo = TRUE
         ORDER BY e.apellido, e.nombre, r.fecha_registro, r.hora_registro
     """
