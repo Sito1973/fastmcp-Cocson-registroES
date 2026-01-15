@@ -12,8 +12,8 @@ from typing import Optional
 
 from fastmcp import FastMCP
 
-from .database import db
-from .utils import (
+from database import db
+from utils import (
     LIMITE_SEMANAL,
     calcular_horas_dia,
     calcular_valor_horas,
