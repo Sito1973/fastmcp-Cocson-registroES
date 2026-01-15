@@ -83,8 +83,7 @@ def log_tool_call(tool_name: str, **kwargs):
 async def consultar_empleados(
     activos_solo: bool = True,
     restaurante: Optional[str] = None,
-    departamento: Optional[str] = None,
-    **kwargs
+    departamento: Optional[str] = None
 ) -> dict:
     """
     Lista empleados del sistema con filtros opcionales por restaurante y departamento.
@@ -97,10 +96,7 @@ async def consultar_empleados(
     Returns:
         Lista de empleados con sus datos
     """
-    # Log para debug
-    log_tool_call("consultar_empleados", activos_solo=activos_solo, restaurante=restaurante, departamento=departamento, **kwargs)
-    if kwargs:
-        logger.warning(f"ARGUMENTOS EXTRA IGNORADOS: {kwargs}")
+    log_tool_call("consultar_empleados", activos_solo=activos_solo, restaurante=restaurante, departamento=departamento)
 
     query = """
         SELECT
@@ -162,7 +158,7 @@ async def consultar_empleados(
 
 
 @mcp.tool(tags={"empleados"})
-async def buscar_empleado(termino: str, **kwargs) -> dict:
+async def buscar_empleado(termino: str) -> dict:
     """
     Busca empleados por código, nombre o apellido.
 
@@ -172,10 +168,7 @@ async def buscar_empleado(termino: str, **kwargs) -> dict:
     Returns:
         Lista de empleados que coinciden con la búsqueda
     """
-    # Log para debug
-    log_tool_call("buscar_empleado", termino=termino, **kwargs)
-    if kwargs:
-        logger.warning(f"ARGUMENTOS EXTRA IGNORADOS: {kwargs}")
+    log_tool_call("buscar_empleado", termino=termino)
 
     query = """
         SELECT
