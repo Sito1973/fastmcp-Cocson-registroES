@@ -22,11 +22,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger("mcp-acceso")
 
-# Silenciar logs de librerías externas
-logging.getLogger("mcp").setLevel(logging.WARNING)
-logging.getLogger("asyncpg").setLevel(logging.WARNING)
-logging.getLogger("uvicorn").setLevel(logging.WARNING)
-logging.getLogger("httpx").setLevel(logging.WARNING)
+# Silenciar logs de librerías externas - TODOS
+logging.getLogger("mcp").setLevel(logging.ERROR)
+logging.getLogger("asyncpg").setLevel(logging.ERROR)
+logging.getLogger("uvicorn").setLevel(logging.ERROR)
+logging.getLogger("uvicorn.access").setLevel(logging.ERROR)
+logging.getLogger("uvicorn.error").setLevel(logging.ERROR)
+logging.getLogger("httpx").setLevel(logging.ERROR)
+logging.getLogger("httpcore").setLevel(logging.ERROR)
+logging.getLogger("starlette").setLevel(logging.ERROR)
+logging.getLogger("fastapi").setLevel(logging.ERROR)
 
 from utils import (
     LIMITE_SEMANAL,
@@ -72,9 +77,10 @@ mcp = FastMCP(
 # =============================================================================
 
 def log_tool_call(tool_name: str, **kwargs):
-    """Loguea una llamada a herramienta - formato compacto"""
+    """Loguea una llamada a herramienta - formato compacto con print para garantizar salida"""
     args_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
-    logger.info(f"[TOOL] {tool_name}({args_str})")
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f">>> [{timestamp}] TOOL: {tool_name}({args_str})", flush=True)
 
 
 # =============================================================================
