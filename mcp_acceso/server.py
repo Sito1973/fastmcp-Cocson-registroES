@@ -15,12 +15,18 @@ from fastmcp import FastMCP
 
 from database import db
 
-# Configurar logging
+# Configurar logging - solo INFO para reducir ruido
 logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("mcp-acceso")
+
+# Silenciar logs de librerías externas
+logging.getLogger("mcp").setLevel(logging.WARNING)
+logging.getLogger("asyncpg").setLevel(logging.WARNING)
+logging.getLogger("uvicorn").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 from utils import (
     LIMITE_SEMANAL,
@@ -66,13 +72,9 @@ mcp = FastMCP(
 # =============================================================================
 
 def log_tool_call(tool_name: str, **kwargs):
-    """Loguea una llamada a herramienta con todos sus argumentos"""
-    logger.info("=" * 60)
-    logger.info(f"TOOL CALL: {tool_name}")
-    logger.info(f"ARGUMENTOS RECIBIDOS:")
-    for key, value in kwargs.items():
-        logger.info(f"  {key}: {value} (tipo: {type(value).__name__})")
-    logger.info("=" * 60)
+    """Loguea una llamada a herramienta - formato compacto"""
+    args_str = ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
+    logger.info(f"[TOOL] {tool_name}({args_str})")
 
 
 # =============================================================================
