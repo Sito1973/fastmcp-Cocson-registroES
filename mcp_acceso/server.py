@@ -62,44 +62,17 @@ mcp = FastMCP(
 
 
 # =============================================================================
-# MIDDLEWARE DE LOGGING
+# HELPER DE LOGGING PARA HERRAMIENTAS
 # =============================================================================
 
-@mcp.middleware()
-async def logging_middleware(ctx):
-    """Middleware para loguear todas las peticiones entrantes"""
-    request = ctx.message
-
-    # Log detallado de la petición
+def log_tool_call(tool_name: str, **kwargs):
+    """Loguea una llamada a herramienta con todos sus argumentos"""
     logger.info("=" * 60)
-    logger.info(f"PETICIÓN ENTRANTE")
-    logger.info(f"Tipo de mensaje: {type(request).__name__}")
-    logger.info(f"Contenido completo: {request}")
-
-    # Si es una llamada a herramienta, logueamos los detalles
-    if hasattr(request, 'params'):
-        logger.info(f"Params: {request.params}")
-    if hasattr(request, 'method'):
-        logger.info(f"Method: {request.method}")
-
-    # Log del mensaje como dict si es posible
-    try:
-        if hasattr(request, 'model_dump'):
-            logger.info(f"Request dump: {json.dumps(request.model_dump(), indent=2, default=str)}")
-        elif hasattr(request, '__dict__'):
-            logger.info(f"Request dict: {json.dumps(request.__dict__, indent=2, default=str)}")
-    except Exception as e:
-        logger.warning(f"No se pudo serializar request: {e}")
-
+    logger.info(f"TOOL CALL: {tool_name}")
+    logger.info(f"ARGUMENTOS RECIBIDOS:")
+    for key, value in kwargs.items():
+        logger.info(f"  {key}: {value} (tipo: {type(value).__name__})")
     logger.info("=" * 60)
-
-    # Continuar con la cadena de middleware
-    result = await ctx.next()
-
-    # Log de la respuesta
-    logger.info(f"RESPUESTA: {type(result).__name__}")
-
-    return result
 
 
 # =============================================================================
@@ -110,7 +83,8 @@ async def logging_middleware(ctx):
 async def consultar_empleados(
     activos_solo: bool = True,
     restaurante: Optional[str] = None,
-    departamento: Optional[str] = None
+    departamento: Optional[str] = None,
+    **kwargs
 ) -> dict:
     """
     Lista empleados del sistema con filtros opcionales por restaurante y departamento.
@@ -123,6 +97,11 @@ async def consultar_empleados(
     Returns:
         Lista de empleados con sus datos
     """
+    # Log para debug
+    log_tool_call("consultar_empleados", activos_solo=activos_solo, restaurante=restaurante, departamento=departamento, **kwargs)
+    if kwargs:
+        logger.warning(f"ARGUMENTOS EXTRA IGNORADOS: {kwargs}")
+
     query = """
         SELECT
             id,
@@ -183,7 +162,7 @@ async def consultar_empleados(
 
 
 @mcp.tool(tags={"empleados"})
-async def buscar_empleado(termino: str) -> dict:
+async def buscar_empleado(termino: str, **kwargs) -> dict:
     """
     Busca empleados por código, nombre o apellido.
 
@@ -193,6 +172,11 @@ async def buscar_empleado(termino: str) -> dict:
     Returns:
         Lista de empleados que coinciden con la búsqueda
     """
+    # Log para debug
+    log_tool_call("buscar_empleado", termino=termino, **kwargs)
+    if kwargs:
+        logger.warning(f"ARGUMENTOS EXTRA IGNORADOS: {kwargs}")
+
     query = """
         SELECT
             id,
